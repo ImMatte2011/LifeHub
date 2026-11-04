@@ -1,0 +1,13 @@
+instance:
+  name: "LifeHub"
+  description: "Personal information platform"
+
+modules:
+  people: false
+  places: false
+  events: false
+  knowledge: false
+
+extensions:
+  maps: false
+  pg_trgm: false
