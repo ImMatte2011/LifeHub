@@ -3,11 +3,12 @@ instance:
   description: "Personal information platform"
 
 modules:
-  people: false
-  places: false
-  events: false
-  knowledge: false
+  people: true
+  places: true
+  events: true
+  knowledge: true
+  buildings: false
 
 extensions:
-  maps: false
-  pg_trgm: false
+  maps: true
+  pg_trgm: true

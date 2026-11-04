@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, ValidationError
 
 
 @dataclass
@@ -24,15 +25,22 @@ def load_instance_config(path: str) -> InstanceConfig:
         _instance_config = InstanceConfig()
         return _instance_config
 
-    with config_path.open() as f:
-        raw = yaml.safe_load(f)
+    with config_path.open(encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
 
-    instance_raw = raw.get("instance", {})
+    raw = raw or {}
+    instance_raw = raw.get("instance", {}) or {}
+    modules = raw.get("modules", {}) or {}
+    extensions = raw.get("extensions", {}) or {}
+    if not isinstance(modules, dict) or not isinstance(extensions, dict):
+        raise ValueError("instance.yaml modules and extensions must be mappings")
+    if any(not isinstance(value, bool) for value in [*modules.values(), *extensions.values()]):
+        raise ValueError("instance.yaml module and extension flags must be booleans")
     _instance_config = InstanceConfig(
         name=instance_raw.get("name", "LifeHub"),
         description=instance_raw.get("description", ""),
-        modules=raw.get("modules", {}),
-        extensions=raw.get("extensions", {}),
+        modules=modules,
+        extensions=extensions,
     )
     return _instance_config
 

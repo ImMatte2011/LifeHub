@@ -14,18 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.auth.service import hash_password
 from app.core.models import Module, Role, Setting, User
+from app.domain.models import EntityType, LinkType, PropertyDefinition
 from app.instance.loader import InstanceConfig
 
 logger = logging.getLogger(__name__)
-
-# Moduli conosciuti: name → (display_name, description)
-_KNOWN_MODULES: dict[str, tuple[str, str]] = {
-    "people": ("People", "Manage contacts and relationships"),
-    "places": ("Places", "Manage locations and visits"),
-    "events": ("Events", "Manage events and timeline"),
-    "knowledge": ("Knowledge", "Manage knowledge items"),
-}
-
 
 async def _ensure_admin_role(db: AsyncSession) -> Role:
     result = await db.execute(select(Role).where(Role.name == "admin"))
@@ -79,22 +71,23 @@ async def _sync_settings(db: AsyncSession, config: InstanceConfig) -> None:
     await db.flush()
 
 
-async def _sync_modules(db: AsyncSession, config: InstanceConfig) -> None:
+async def _sync_modules(db: AsyncSession, registry, extension_manager) -> None:
     """
     Sincronizza core.modules con la configurazione dell'istanza.
     Crea il record se mancante, aggiorna is_enabled se già presente.
     """
-    for name, (display_name, description) in _KNOWN_MODULES.items():
+    for module_spec in registry.modules.values():
+        name = module_spec.name
         result = await db.execute(select(Module).where(Module.name == name))
         module = result.scalar_one_or_none()
-        is_enabled = config.modules.get(name, False)
+        is_enabled = module_spec.enabled and all(extension_manager.is_available(ext) for ext in module_spec.requires)
 
         if not module:
             db.add(
                 Module(
                     name=name,
-                    display_name=display_name,
-                    description=description,
+                    display_name=module_spec.display_name,
+                    description=module_spec.description,
                     is_enabled=is_enabled,
                     is_core=False,
                     version="0.1.0",
@@ -102,15 +95,39 @@ async def _sync_modules(db: AsyncSession, config: InstanceConfig) -> None:
             )
         else:
             module.is_enabled = is_enabled
+            module.display_name = module_spec.display_name
+            module.description = module_spec.description
+
+
+async def _seed_metadata(db: AsyncSession) -> None:
+    definitions = {
+        "book": ("Book", [("author", "Author", "string", True, None), ("isbn", "ISBN", "string", False, None), ("status", "Reading status", "enum", False, ["to_read", "reading", "read"])]),
+        "ammo": ("Ammunition", [("caliber", "Caliber", "string", True, None), ("quantity", "Quantity", "integer", True, None), ("manufacturer", "Manufacturer", "string", False, None)]),
+        "software": ("Software", [("version", "Version", "string", False, None), ("vendor", "Vendor", "string", False, None), ("license", "License", "string", False, None)]),
+        "recipe": ("Recipe", [("servings", "Servings", "integer", False, None), ("prep_minutes", "Preparation minutes", "integer", False, None), ("ingredients", "Ingredients", "text", False, None)]),
+    }
+    for name, (label, properties) in definitions.items():
+        entity_type = (await db.execute(select(EntityType).where(EntityType.name == name))).scalar_one_or_none()
+        if entity_type is None:
+            entity_type = EntityType(name=name, module="knowledge", label=label)
+            db.add(entity_type); await db.flush()
+        for order, (prop_name, prop_label, data_type, required, choices) in enumerate(properties):
+            exists = (await db.execute(select(PropertyDefinition).where(PropertyDefinition.entity_type_id == entity_type.id, PropertyDefinition.name == prop_name))).scalar_one_or_none()
+            if exists is None:
+                db.add(PropertyDefinition(entity_type_id=entity_type.id, name=prop_name, label=prop_label, data_type=data_type, required=required, sort_order=order, enum_values=choices))
+    for name, label, inverse in [("related", "Related to", "Related from"), ("parent", "Parent of", "Child of"), ("works_with", "Works with", "Works with")]:
+        if not (await db.execute(select(LinkType).where(LinkType.name == name))).scalar_one_or_none():
+            db.add(LinkType(name=name, label=label, inverse_label=inverse))
 
     await db.flush()
 
 
-async def run_startup(db: AsyncSession, config: InstanceConfig) -> None:
+async def run_startup(db: AsyncSession, config: InstanceConfig, registry, extension_manager) -> None:
     logger.info("Running startup tasks...")
     role = await _ensure_admin_role(db)
     await _ensure_admin_user(db, role)
     await _sync_settings(db, config)
-    await _sync_modules(db, config)
+    await _sync_modules(db, registry, extension_manager)
+    await _seed_metadata(db)
     await db.commit()
     logger.info("Startup complete")

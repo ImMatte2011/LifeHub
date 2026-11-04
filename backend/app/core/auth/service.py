@@ -5,6 +5,8 @@ Le sessioni sono token opachi (secrets.token_urlsafe) salvati in core.sessions.
 Non si usa JWT: il token viene verificato contro il DB ad ogni richiesta.
 """
 import secrets
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 
 from passlib.context import CryptContext
@@ -27,6 +29,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return _pwd_context.verify(plain, hashed)
+
+
+def _hash_session_token(token: str) -> str:
+    return hmac.new(settings.secret_key.encode("utf-8"), token.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +81,7 @@ async def create_session(
 
     session = Session(
         user_id=user.id,
-        token=token,
+        token=_hash_session_token(token),
         ip_address=ip_address,
         user_agent=user_agent,
         expires_at=expires_at,
@@ -83,13 +89,14 @@ async def create_session(
     )
     db.add(session)
     await db.flush()
+    session.issued_token = token
     return session
 
 
 async def get_valid_session(db: AsyncSession, token: str) -> Session | None:
     result = await db.execute(
         select(Session).where(
-            Session.token == token,
+            Session.token == _hash_session_token(token),
             Session.expires_at > _now(),
         )
     )
@@ -103,7 +110,7 @@ async def touch_session(db: AsyncSession, session: Session) -> None:
 
 
 async def delete_session(db: AsyncSession, token: str) -> None:
-    result = await db.execute(select(Session).where(Session.token == token))
+    result = await db.execute(select(Session).where(Session.token == _hash_session_token(token)))
     session = result.scalar_one_or_none()
     if session:
         await db.delete(session)

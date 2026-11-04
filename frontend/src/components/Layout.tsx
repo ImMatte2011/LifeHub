@@ -1,4 +1,5 @@
 import { useAuth } from '../core/auth/AuthContext'
+import { Link } from 'react-router-dom'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -12,9 +13,9 @@ export default function Layout({ children }: LayoutProps) {
       {/* Header */}
       <header className="border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <span className="text-base font-semibold tracking-tight text-zinc-100">
+          <Link to="/" className="text-base font-semibold tracking-tight text-zinc-100">
             Life<span className="text-indigo-400">Hub</span>
-          </span>
+          </Link>
 
           <div className="flex items-center gap-4">
             <span className="text-sm text-zinc-400 hidden sm:block">

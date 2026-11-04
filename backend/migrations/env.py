@@ -12,6 +12,7 @@ from sqlalchemy import engine_from_config, pool
 
 # Importa tutti i modelli così sono registrati su Base.metadata
 from app.core import models as _core_models  # noqa: F401
+from app.domain import models as _domain_models  # noqa: F401
 from app.database import Base
 
 config = context.config

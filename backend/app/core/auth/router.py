@@ -64,7 +64,7 @@ async def login(
     )
 
     return LoginResponse(
-        token=session.token,
+        token=session.issued_token,
         user=UserResponse.model_validate(user),
     )
 

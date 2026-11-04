@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { api } from '../core/api'
 import { useAuth } from '../core/auth/AuthContext'
+import { Link } from 'react-router-dom'
+import AdminPanel from './AdminPanel'
 
 interface Module {
   name: string
@@ -21,6 +23,18 @@ export default function Dashboard() {
   const { user } = useAuth()
   const [modules, setModules] = useState<Module[]>([])
   const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<{ id: string; module: string; title: string; summary: string }[]>([])
+  const [searching, setSearching] = useState(false)
+
+  async function search(event: FormEvent) {
+    event.preventDefault()
+    if (query.trim().length < 2) return setResults([])
+    setSearching(true)
+    try { setResults(await api.get<{ id: string; module: string; title: string; summary: string }[]>(`/search?q=${encodeURIComponent(query.trim())}`)) }
+    catch { setResults([]) }
+    finally { setSearching(false) }
+  }
 
   useEffect(() => {
     api
@@ -32,6 +46,11 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-10">
+      <form onSubmit={search} className="flex gap-2" role="search">
+        <input aria-label="Search LifeHub" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search people, places, events, knowledge…" className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 focus:border-indigo-500 focus:outline-none" />
+        <button className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50" disabled={searching}>{searching ? 'Searching…' : 'Search'}</button>
+      </form>
+      {results.length > 0 && <section className="space-y-2" aria-live="polite">{results.map((item) => <Link key={`${item.module}:${item.id}`} to={`/modules/${item.module}`} className="block rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-indigo-700"><span className="text-xs uppercase tracking-wide text-indigo-400">{item.module}</span><h2 className="mt-1 text-sm font-medium text-zinc-100">{item.title}</h2><p className="mt-1 text-sm text-zinc-500">{item.summary}</p></Link>)}</section>}
       {/* Welcome */}
       <div>
         <h1 className="text-2xl font-semibold text-zinc-100">
@@ -62,8 +81,9 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {modules.map((mod) => (
-              <div
+              <Link
                 key={mod.name}
+                to={`/modules/${mod.name}`}
                 className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex items-start gap-4"
               >
                 <span className="text-2xl leading-none mt-0.5">
@@ -82,7 +102,7 @@ export default function Dashboard() {
                     <p className="text-xs text-zinc-500 mt-1">{mod.description}</p>
                   )}
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
@@ -121,6 +141,7 @@ export default function Dashboard() {
           </div>
         </section>
       )}
+      {user?.is_system_admin && <AdminPanel />}
     </div>
   )
 }

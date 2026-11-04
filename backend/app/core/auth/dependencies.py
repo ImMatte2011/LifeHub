@@ -43,6 +43,7 @@ async def get_current_user(
         )
 
     await touch_session(db, session)
+    db.sync_session.info["actor_id"] = session.user_id
 
     result = await db.execute(select(User).where(User.id == session.user_id))
     user = result.scalar_one_or_none()
